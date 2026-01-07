@@ -384,7 +384,7 @@ async fn regtest_handshake_async() {
     };
     use tokio::net::TcpStream;
 
-    let bitcoind = regtest_process(TransportVersion::V2);
+    let mut bitcoind = regtest_process(TransportVersion::V2);
 
     let stream = TcpStream::connect(bitcoind.params.p2p_socket.unwrap())
         .await
@@ -437,6 +437,25 @@ async fn regtest_handshake_async() {
     assert_eq!(response_message.cmd(), "version");
 
     println!("Successfully exchanged version messages using async Protocol API!");
+
+    let message = consensus::serialize(&V2NetworkMessage::new(NetworkMessage::Verack));
+    println!("Sending verack message using Protocol::write()");
+    protocol.write(&Payload::genuine(message)).await.unwrap();
+
+    let mut node_up = true;
+    loop {
+        let payload = protocol.read().await.unwrap();
+        let response_message = consensus::deserialize::<V2NetworkMessage>(payload.contents()).unwrap();
+        println!("read {:?}", response_message);
+
+        // Stopping the node here. The next few read()'s should fail?
+        if node_up {
+            node_up = false;
+            bitcoind.stop().unwrap();
+            println!("node is now shutdown!");    
+        }
+    }
+
 }
 
 #[test]
